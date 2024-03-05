@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -243,20 +244,33 @@ func (o *CopyOptions) Run() error {
 		return err
 	}
 
-	if len(srcSpec.PodName) != 0 && len(destSpec.PodName) != 0 {
-		return fmt.Errorf("one of src or dest must be a local file specification")
-	}
 	if len(srcSpec.File.String()) == 0 || len(destSpec.File.String()) == 0 {
 		return errors.New("filepath can not be empty")
 	}
 
-	if len(srcSpec.PodName) != 0 {
+	if len(srcSpec.PodName) != 0 && len(destSpec.PodName) != 0 {
+		tmpPath, err := os.MkdirTemp("", srcSpec.PodName+"_*")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmpPath)
+
+		tmpFilePath := path.Join(tmpPath, srcSpec.File.String())
+
+		tmpSpec, err := extractFileSpec(tmpFilePath)
+		if err != nil {
+			return err
+		}
+
+		if err := o.copyFromPod(srcSpec, tmpSpec); err != nil {
+			return err
+		}
+		return o.copyToPod(tmpSpec, destSpec, &exec.ExecOptions{})
+	} else if len(srcSpec.PodName) != 0 {
 		return o.copyFromPod(srcSpec, destSpec)
-	}
-	if len(destSpec.PodName) != 0 {
+	} else {
 		return o.copyToPod(srcSpec, destSpec, &exec.ExecOptions{})
 	}
-	return fmt.Errorf("one of src or dest must be a remote file specification")
 }
 
 // checkDestinationIsDir receives a destination fileSpec and
